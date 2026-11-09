@@ -41,6 +41,12 @@ test("the store screen gets the shell API and no print bridge", async () => {
     .toEqual(["object", "undefined"]);
 });
 
+test("the window title stays Goopter Smart POS when the page changes its title", async () => {
+  await page.evaluate(() => { document.title = "Some page title"; });
+  await expect.poll(() => page.title()).toBe("Some page title");
+  expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getTitle())).toBe("Goopter Smart POS");
+});
+
 test("the screen has no heading, only the field, error line and Open button", async () => {
   expect(await page.locator("h1").count()).toBe(0);
   expect(await page.locator("main p:not(.error)").count()).toBe(0);

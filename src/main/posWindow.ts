@@ -54,6 +54,7 @@ export class PosWindow {
       webPreferences,
     });
     this.window.once("ready-to-show", () => this.window.show());
+    this.window.on("page-title-updated", (event) => event.preventDefault());
     this.window.on("closed", () => this.releaseWakeLock());
     this.installNavigationPolicy(this.window.webContents);
     this.installShortcuts(this.window.webContents);
