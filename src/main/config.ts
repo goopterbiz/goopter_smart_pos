@@ -11,6 +11,7 @@ import { originOf } from "../bridge/hostPolicy.js";
  *   Its origin is allowlisted exactly, so the bridge is exposed against a local Odoo.
  * - `GOOPTER_USER_DATA`: keep settings, the log and cookies somewhere else, for isolated tests.
  * - `GOOPTER_WINDOWED=true`: an ordinary window instead of kiosk, with developer tools.
+ * - `GOOPTER_ALWAYS_KIOSK=false`: launch in the saved window mode instead of always in kiosk.
  */
 const dev = !app.isPackaged;
 
@@ -24,6 +25,11 @@ export const debugOrigin: string | null = debugUrl === null ? null : originOf(de
 export const userDataOverride: string | null = (dev && process.env.GOOPTER_USER_DATA) || null;
 
 export const windowed = dev && process.env.GOOPTER_WINDOWED === "true";
+
+/** Feature flag: every launch opens in kiosk mode, whatever window mode is saved. */
+const ALWAYS_KIOSK = true;
+
+export const alwaysKiosk = dev && process.env.GOOPTER_ALWAYS_KIOSK === "false" ? false : ALWAYS_KIOSK;
 
 /** The app's own screens. Anything under this URL gets the shell API and nothing else does. */
 export const rendererDir = path.join(__dirname, "..", "..", "renderer");

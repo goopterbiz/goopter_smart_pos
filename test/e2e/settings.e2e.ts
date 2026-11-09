@@ -7,7 +7,8 @@ import { _electron as electron, expect, test, type ElectronApplication, type Pag
 
 /**
  * C5 and C6: the window mode chosen from the diagnostic log's ⋯ menu is saved, applied at once,
- * logged, and used on the next launch. The till starts windowed, without the windowed override.
+ * logged, and used on the next launch. The till starts windowed, without the windowed override and
+ * with the always-kiosk flag off, until the last test turns the flag back on.
  *
  * Each test continues from the state the one before it left.
  */
@@ -24,17 +25,19 @@ const settingsFile = () => path.join(userData, "settings.json");
 const logFile = () => path.join(userData, "print-jobs.jsonl");
 const logEvents = () => readFileSync(logFile(), "utf8").trim().split("\n").map((line) => JSON.parse(line));
 
-async function launch(): Promise<{ app: ElectronApplication; pos: Page }> {
-  // Without the windowed override, whatever the calling shell has set.
+async function launch(alwaysKiosk = false): Promise<{ app: ElectronApplication; pos: Page }> {
+  // Without the windowed override or the always-kiosk override, whatever the calling shell has set.
   const env = Object.fromEntries(
     Object.entries(process.env).filter(
-      (pair): pair is [string, string] => pair[1] !== undefined && pair[0] !== "GOOPTER_WINDOWED",
+      (pair): pair is [string, string] =>
+        pair[1] !== undefined && !["GOOPTER_WINDOWED", "GOOPTER_ALWAYS_KIOSK"].includes(pair[0]),
     ),
   );
   const launched = await electron.launch({
     args: [root],
     env: {
       ...env,
+      ...(alwaysKiosk ? {} : { GOOPTER_ALWAYS_KIOSK: "false" }),
       GOOPTER_DEBUG_URL: `http://127.0.0.1:${(posServer.address() as AddressInfo).port}/odoo/point-of-sale`,
       GOOPTER_USER_DATA: userData,
     },
@@ -242,4 +245,23 @@ test("GoopterPOS.enterKiosk() from the POS page applies kiosk at once, saves it,
   expect(JSON.parse(readFileSync(settingsFile(), "utf8"))).toEqual({ kiosk: true });
   const origin = `http://127.0.0.1:${(posServer.address() as AddressInfo).port}`;
   await expect.poll(() => logEvents().some((e) => e.event === "window_mode" && e.outcome === "kiosk" && e.origin === origin)).toBe(true);
+});
+
+test("with the always-kiosk flag on, a relaunch opens in kiosk mode even with Window saved", async () => {
+  log = await openLog(app);
+  await chooseMode(log, "#mode-window");
+  await expect.poll(() => posIsKiosk(app, pos)).toBe(false);
+  expect(JSON.parse(readFileSync(settingsFile(), "utf8"))).toEqual({ kiosk: false });
+
+  await app.close();
+  ({ app, pos } = await launch(true));
+  expect(await posIsKiosk(app, pos)).toBe(true);
+  expect(JSON.parse(readFileSync(settingsFile(), "utf8"))).toEqual({ kiosk: false });
+});
+
+test("with the always-kiosk flag on, choosing Window still applies for the rest of the run", async () => {
+  log = await openLog(app);
+  await chooseMode(log, "#mode-window");
+  await expect.poll(() => posIsKiosk(app, pos)).toBe(false);
+  expect(JSON.parse(readFileSync(settingsFile(), "utf8"))).toEqual({ kiosk: false });
 });

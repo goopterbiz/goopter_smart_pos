@@ -222,6 +222,7 @@ test("GOOPTER_WINDOWED=1 leaves a saved kiosk mode on; only \"true\" disables it
       GOOPTER_DEBUG_URL: `http://127.0.0.1:${portOf(posServer)}/odoo/point-of-sale`,
       GOOPTER_USER_DATA: otherUserData,
       GOOPTER_WINDOWED: "1",
+      GOOPTER_ALWAYS_KIOSK: "false",
     },
   });
   try {

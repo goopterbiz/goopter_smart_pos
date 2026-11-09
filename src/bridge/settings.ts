@@ -23,7 +23,10 @@ export function parseSettings(raw: unknown): Settings {
   return { kiosk: (value as { kiosk?: unknown }).kiosk === true };
 }
 
-/** The dev override (`GOOPTER_WINDOWED=true`, unpackaged only) wins, then the saved setting. */
-export function kioskAtLaunch(p: { windowedOverride: boolean; saved: Settings }): boolean {
-  return !p.windowedOverride && p.saved.kiosk;
+/**
+ * The dev override (`GOOPTER_WINDOWED=true`, unpackaged only) wins, then `alwaysKiosk`, which skips
+ * the saved setting, then the saved setting.
+ */
+export function kioskAtLaunch(p: { windowedOverride: boolean; alwaysKiosk: boolean; saved: Settings }): boolean {
+  return !p.windowedOverride && (p.alwaysKiosk || p.saved.kiosk);
 }
