@@ -108,9 +108,13 @@ One-time setup on the release Mac:
 
 Each release:
 
-1. Bump `version` in `package.json`. Installed apps only take a higher version.
-2. `npm run deploy`. It builds macOS (Apple Silicon and Intel, signed and notarized), Windows x64
-   and Linux, and uploads them to a draft GitHub release.
+1. Bump `version` in `package.json` and commit. Installed apps only take a higher version.
+2. `npm run deploy`. It first tags `HEAD` as `desktop/v.<version>` (`publish.tagNamePrefix` in
+   `electron-builder.cjs`) and pushes the tag to the release repo, so the release points at the
+   commit it was built from. It stops if tracked files have uncommitted changes, or if the tag
+   already exists on another commit. If a build fails and the fix needs a new commit, bump the
+   version again. It then builds macOS (Apple Silicon and Intel, signed and notarized), Windows
+   x64 and Linux, and uploads them to a draft GitHub release.
 3. Publish the draft on GitHub. Installed apps ignore drafts.
 
 Windows builds are unsigned, so SmartScreen warns on first install.

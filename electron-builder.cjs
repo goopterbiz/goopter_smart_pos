@@ -17,7 +17,7 @@ module.exports = {
   productName: "Goopter Smart POS",
   directories: { output: "release" },
   files: ["dist/**/*.js", "renderer/**/*", "package.json"],
-  publish: { provider: "github", owner, repo },
+  publish: { provider: "github", owner, repo, tagNamePrefix: "desktop/v." },
   mac: {
     // The zip is what an installed app downloads to update itself. The dmg is for first installs.
     target: [
