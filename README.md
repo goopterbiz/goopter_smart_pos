@@ -97,6 +97,11 @@ It never restarts itself. Each check, download and failure is written to the dia
 `update` entry. The repo is baked into each build, so an installed app keeps polling the repo it
 was built with.
 
+To move to a new release repo, set `GH_REPO_URL` to the new repo and `OLD_GH_REPO_URL` to the old
+one. `npm run deploy` then tags and uploads to both. Installed apps on the old repo find the
+release there, and the build they install polls `GH_REPO_URL`. Remove `OLD_GH_REPO_URL` once every
+till has updated.
+
 One-time setup on the release Mac:
 
 1. The keychain holds the `Developer ID Application: Goopter Holdings Ltd. (SSFYC2Q9U6)` identity.
@@ -110,7 +115,7 @@ Each release:
 
 1. Bump `version` in `package.json` and commit. Installed apps only take a higher version.
 2. `npm run deploy`. It first tags `HEAD` as `desktop/v.<version>` (`publish.tagNamePrefix` in
-   `electron-builder.cjs`) and pushes the tag to the release repo, so the release points at the
+   `electron-builder.cjs`) and pushes the tag to each release repo, so the release points at the
    commit it was built from. It stops if tracked files have uncommitted changes, or if the tag
    already exists on another commit. If a build fails and the fix needs a new commit, bump the
    version again. It then builds macOS (Apple Silicon and Intel, signed and notarized), Windows

@@ -13,7 +13,7 @@ const fail = (message) => {
 };
 
 const { version } = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-const tag = `${publish.tagNamePrefix}${version}`;
+const tag = `${publish[0].tagNamePrefix}${version}`;
 const head = git("rev-parse", "HEAD");
 
 if (git("status", "--porcelain", "--untracked-files=no") !== "") {
@@ -27,10 +27,12 @@ try {
 if (tagged === "") git("tag", "--no-sign", tag);
 else if (tagged !== head) fail(`${tag} already points at ${tagged}, not HEAD ${head}. Bump the version.`);
 
-const url = process.env.GH_REPO_URL;
-console.log(`tag-release: pushing ${tag} to ${url}`);
-try {
-  execFileSync("git", ["push", url, `refs/tags/${tag}`], { cwd: root, stdio: "inherit" });
-} catch {
-  fail(`could not push ${tag} to ${url}`);
+for (const { owner, repo } of publish) {
+  const url = `https://github.com/${owner}/${repo}.git`;
+  console.log(`tag-release: pushing ${tag} to ${url}`);
+  try {
+    execFileSync("git", ["push", url, `refs/tags/${tag}`], { cwd: root, stdio: "inherit" });
+  } catch {
+    fail(`could not push ${tag} to ${url}`);
+  }
 }

@@ -10,14 +10,15 @@ const path = require("node:path");
 // with its defaults instead of failing.
 const releaseEnv = path.join(__dirname, "release.env");
 if (fs.existsSync(releaseEnv)) process.loadEnvFile(releaseEnv);
-const { owner, repo } = githubRepo(process.env.GH_REPO_URL);
+const releaseRepos = [githubRepo(process.env.GH_REPO_URL)];
+if (process.env.OLD_GH_REPO_URL) releaseRepos.push(githubRepo(process.env.OLD_GH_REPO_URL));
 
 module.exports = {
   appId: "com.goopter.smartpos",
   productName: "Goopter Smart POS",
   directories: { output: "release" },
   files: ["dist/**/*.js", "renderer/**/*", "package.json"],
-  publish: { provider: "github", owner, repo, tagNamePrefix: "desktop/v." },
+  publish: releaseRepos.map(({ owner, repo }) => ({ provider: "github", owner, repo, tagNamePrefix: "desktop/v." })),
   mac: {
     // The zip is what an installed app downloads to update itself. The dmg is for first installs.
     target: [
