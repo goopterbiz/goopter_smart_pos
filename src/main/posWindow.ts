@@ -5,7 +5,7 @@ import type { JobLog } from "../bridge/jobLog.js";
 import { decideNavigation } from "../bridge/navigationPolicy.js";
 import { isPermissionGranted } from "../bridge/permissionPolicy.js";
 import { kioskAtLaunch } from "../bridge/settings.js";
-import { debugOrigin, preloadPath, rendererDir, windowed } from "./config.js";
+import { debugOrigin, preloadPath, rendererDir, windowed, windowIcon } from "./config.js";
 import { readSettings } from "./settings.js";
 import { storedLaunchUrl } from "./tenantStore.js";
 
@@ -50,6 +50,7 @@ export class PosWindow {
       backgroundColor: "#ffffff",
       autoHideMenuBar: true,
       title: "Goopter Smart POS",
+      ...windowIcon,
       webPreferences,
     });
     this.window.once("ready-to-show", () => this.window.show());
@@ -116,6 +117,7 @@ export class PosWindow {
       width: 960,
       height: 720,
       title: "Diagnostic log",
+      ...windowIcon,
       autoHideMenuBar: true,
       webPreferences,
     });

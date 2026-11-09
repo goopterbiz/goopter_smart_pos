@@ -30,3 +30,12 @@ export const rendererDir = path.join(__dirname, "..", "..", "renderer");
 export const shellUrlPrefix = pathToFileURL(rendererDir + path.sep).href;
 
 export const preloadPath = path.join(__dirname, "..", "preload", "preload.js");
+
+export const windowIcon: { icon?: string } =
+  process.platform !== "linux"
+    ? {}
+    : {
+        icon: app.isPackaged
+          ? path.join(process.resourcesPath, "icon.png")
+          : path.join(app.getAppPath(), "build", "icons", "256x256.png"),
+      };
