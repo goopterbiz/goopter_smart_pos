@@ -5,7 +5,7 @@ import type { JobLog } from "../bridge/jobLog.js";
 import { decideNavigation } from "../bridge/navigationPolicy.js";
 import { isPermissionGranted } from "../bridge/permissionPolicy.js";
 import { kioskAtLaunch } from "../bridge/settings.js";
-import { debugOrigin, preloadPath, rendererDir, windowed, windowIcon } from "./config.js";
+import { alwaysKiosk, debugOrigin, preloadPath, rendererDir, windowed, windowIcon } from "./config.js";
 import { readSettings } from "./settings.js";
 import { storedLaunchUrl } from "./tenantStore.js";
 
@@ -43,7 +43,7 @@ export class PosWindow {
 
   constructor(private readonly log: JobLog) {
     this.window = new BrowserWindow({
-      kiosk: kioskAtLaunch({ windowedOverride: windowed, saved: readSettings() }),
+      kiosk: kioskAtLaunch({ windowedOverride: windowed, alwaysKiosk, saved: readSettings() }),
       show: false,
       width: 1280,
       height: 800,

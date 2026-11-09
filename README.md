@@ -124,6 +124,7 @@ them.
 |---|---|
 | `GOOPTER_DEBUG_URL=http://localhost:8069/odoo/point-of-sale` | Load this instead of the saved store. Its origin gets the bridge. |
 | `GOOPTER_WINDOWED=true` | Ordinary window with developer tools instead of kiosk, whatever window mode is saved. |
+| `GOOPTER_ALWAYS_KIOSK=false` | Launch in the saved window mode, turning off the always-kiosk flag. |
 | `GOOPTER_USER_DATA=/tmp/x` | Keep settings, log and cookies in another directory. |
 
 ## At the till
@@ -137,10 +138,17 @@ The store is asked for once and remembered. Change store clears the saved store 
 data, so the next store does not open signed in as the last one.
 
 Window mode is Kiosk or Window. It applies at once and is saved as `{"kiosk": false}` or
-`{"kiosk": true}` in `settings.json` in the user data folder, so it holds on every launch. A missing
-or unreadable file means Window, so a fresh install opens windowed until Kiosk is chosen from the
-log or the page calls `GoopterPOS.enterKiosk()`. In an unpackaged build `GOOPTER_WINDOWED=true` overrides it. Window
-mode never enables developer tools.
+`{"kiosk": true}` in `settings.json` in the user data folder. Window mode never enables developer
+tools.
+
+The always-kiosk flag, `ALWAYS_KIOSK` in `src/main/config.ts`, is on. Every launch, including a
+fresh install, opens in kiosk mode and the saved window mode is ignored at launch. Choosing Window
+from the log still applies for the rest of that run and is still saved.
+
+With the flag off, the saved mode holds on every launch. A missing or unreadable file means Window,
+so a fresh install opens windowed until Kiosk is chosen from the log or the page calls
+`GoopterPOS.enterKiosk()`. In an unpackaged build `GOOPTER_WINDOWED=true` overrides both the flag
+and the saved mode.
 
 The display is kept awake while the POS is open.
 

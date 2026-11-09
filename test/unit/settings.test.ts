@@ -42,10 +42,18 @@ describe("settings", () => {
   });
 
   it("the dev override wins over the saved setting, which wins over windowed", () => {
-    expect(kioskAtLaunch({ windowedOverride: true, saved: { kiosk: true } })).toBe(false);
-    expect(kioskAtLaunch({ windowedOverride: true, saved: { kiosk: false } })).toBe(false);
-    expect(kioskAtLaunch({ windowedOverride: false, saved: { kiosk: false } })).toBe(false);
-    expect(kioskAtLaunch({ windowedOverride: false, saved: { kiosk: true } })).toBe(true);
-    expect(kioskAtLaunch({ windowedOverride: false, saved: parseSettings(undefined) })).toBe(false);
+    const alwaysKiosk = false;
+    expect(kioskAtLaunch({ windowedOverride: true, alwaysKiosk, saved: { kiosk: true } })).toBe(false);
+    expect(kioskAtLaunch({ windowedOverride: true, alwaysKiosk, saved: { kiosk: false } })).toBe(false);
+    expect(kioskAtLaunch({ windowedOverride: false, alwaysKiosk, saved: { kiosk: false } })).toBe(false);
+    expect(kioskAtLaunch({ windowedOverride: false, alwaysKiosk, saved: { kiosk: true } })).toBe(true);
+    expect(kioskAtLaunch({ windowedOverride: false, alwaysKiosk, saved: parseSettings(undefined) })).toBe(false);
+  });
+
+  it("alwaysKiosk skips the saved setting, and the dev override still wins", () => {
+    const alwaysKiosk = true;
+    expect(kioskAtLaunch({ windowedOverride: false, alwaysKiosk, saved: { kiosk: false } })).toBe(true);
+    expect(kioskAtLaunch({ windowedOverride: false, alwaysKiosk, saved: parseSettings(undefined) })).toBe(true);
+    expect(kioskAtLaunch({ windowedOverride: true, alwaysKiosk, saved: { kiosk: true } })).toBe(false);
   });
 });
