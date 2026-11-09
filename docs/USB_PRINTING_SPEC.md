@@ -10,18 +10,22 @@ longer needed on that till. iOS and Android do not support this delivery.
 
 ## Odoo side (`goopter_odoo_docker/addons/goopter_pos_escpos_agent`)
 
-1. `models/pos_printer.py:33-59`: add `escpos_delivery` value `usb`, label "USB (Smart POS
-   Desktop)".
-2. Reuse `escpos_qz_printer_name` (`models/pos_printer.py:78`) as the printer name for `usb`, so
-   switching a printer from `qz` to `usb` keeps its name. Show it in the form for both values.
-   Required for `usb`: unlike QZ, there is no default printer.
-3. `escpos_printer.js:319` `_deliverBytes`: for `usb`, call
+1. `models/pos_printer.py`: add `escpos_delivery` value `usb`, label "USB (only available on Smart
+   POS Desktop)".
+2. New field `escpos_usb_printer_name`, required for `usb` (a constraint rejects a blank or
+   whitespace-only name). It is separate from `escpos_qz_printer_name`: QZ allows a blank name for
+   the default printer and the bridge matches the name exactly, so switching a printer from `qz`
+   to `usb` asks for the name again.
+3. New `EscPosUsbPrinter` (`static/src/app/escpos_usb_printer.js`) calls
    `GoopterPOS.print({ protocol_version: 2, printer: { name }, data_base64 })` with the same bytes
-   the `qz` path renders.
-4. Before calling, require `GoopterPOS.usbPrinting === true`. Otherwise fail the job with "This
-   printer is set to USB, which needs the Goopter Smart POS desktop app, version 1.1 or later." No
-   fallback to QZ Tray or the server.
-5. The backend Test Connection button (`escpos_test_connection.js:138`) uses the same path.
+   the `qz` path renders. No fallback to QZ Tray or the server.
+4. Odoo calls the bridge only when `GoopterPOS.usbPrinting === true`. On any other till (web,
+   iOS, Android, desktop older than 1.1) it follows the Bluetooth rule:
+   - Receipts, kitchen tickets, reports and self-order printing are skipped and logged to the
+     console, so no retry dialog appears on every order.
+   - The cash drawer kick and Test Connection fail with "This till cannot print to USB printers.
+     They work only on a till running the Goopter Smart POS desktop app."
+5. The backend Test Connection button (`escpos_test_connection.js`) uses the same path.
 
 ## Bridge contract
 
@@ -81,7 +85,8 @@ Protocol version stays 2. The envelope gains a second printer shape. Exactly one
   spooler process (fake transport).
 - e2e: `GoopterPOS.usbPrinting` is `true`; a call with an unknown name returns
   `printer_not_installed`.
-- Odoo: `usb` delivery without `usbPrinting` fails with the desktop-app message and sends nothing.
+- Odoo: without `usbPrinting`, a receipt and a kitchen ticket are skipped, the drawer kick and Test
+  Connection fail with the desktop-app message, and nothing is sent.
 - Device: a receipt prints on a USB ESC/POS printer on Linux, Windows and macOS. Cash drawer kick
   works.
 
@@ -98,7 +103,8 @@ Protocol version stays 2. The envelope gains a second printer shape. Exactly one
 
 ## Decisions
 
-- D1. New `escpos_delivery` value `usb`, desktop only, reusing `escpos_qz_printer_name`.
+- D1. New `escpos_delivery` value `usb`, desktop only, with its own field
+  `escpos_usb_printer_name`.
 - D2. Protocol version stays 2. Odoo detects support with `GoopterPOS.usbPrinting`.
 - D3. No QZ Tray fallback.
 - D4. Windows uses a small bundled C helper rather than an npm native printer module.
