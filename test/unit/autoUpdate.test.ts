@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CHECK_INTERVAL_MS, startAutoUpdate, type Updater } from "../../src/bridge/autoUpdate.js";
+import { CHECK_INTERVAL_MS, startAutoUpdate, type UpdateControl, type Updater } from "../../src/bridge/autoUpdate.js";
 import { RecordingLog } from "./support.js";
 
 /**
@@ -17,7 +17,7 @@ class FakeUpdater implements Updater {
   autoDownload = false;
   autoInstallOnAppQuit = false;
   checks = 0;
-  quitAndInstallCalled = false;
+  quitAndInstallCalls: [boolean | undefined, boolean | undefined][] = [];
   private failure: Error | null = null;
   private readonly listeners = new Map<string, ((arg: never) => void)[]>();
 
@@ -58,10 +58,21 @@ class FakeUpdater implements Updater {
     return Promise.resolve({ downloadPromise });
   }
 
-  /** Never wired to anything the module calls; present so a forced restart fails loudly. */
-  quitAndInstall(): never {
-    this.quitAndInstallCalled = true;
-    throw new Error("autoUpdate must never force a restart");
+  quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void {
+    this.quitAndInstallCalls.push([isSilent, isForceRunAfter]);
+  }
+}
+
+class FakeNative {
+  private readonly listeners: (() => void)[] = [];
+
+  on(_event: "update-downloaded", listener: () => void): this {
+    this.listeners.push(listener);
+    return this;
+  }
+
+  emit(): void {
+    for (const listener of this.listeners) listener();
   }
 }
 
@@ -71,29 +82,32 @@ const withCode = (message: string, code: string): Error => Object.assign(new Err
 const realSetImmediate = globalThis.setImmediate;
 
 describe("startAutoUpdate", () => {
-  let stop: () => void = () => {};
+  let control: UpdateControl | null = null;
 
   beforeEach(() => {
     vi.useFakeTimers();
   });
 
   afterEach(() => {
-    stop();
+    control?.stop();
+    control = null;
     vi.useRealTimers();
   });
 
   it("downloads in the background and installs on the next quit, never forcing a restart", () => {
     const updater = new FakeUpdater();
-    stop = startAutoUpdate(updater, new RecordingLog().append);
+    control = startAutoUpdate(updater, new RecordingLog().append);
 
     expect(updater.autoDownload).toBe(true);
     expect(updater.autoInstallOnAppQuit).toBe(true);
-    expect(updater.quitAndInstallCalled).toBe(false);
+    updater.emit("update-downloaded", { version: "1.0.1" });
+    vi.advanceTimersByTime(CHECK_INTERVAL_MS * 3);
+    expect(updater.quitAndInstallCalls).toEqual([]);
   });
 
   it("checks once at start and again every interval", () => {
     const updater = new FakeUpdater();
-    stop = startAutoUpdate(updater, new RecordingLog().append);
+    control = startAutoUpdate(updater, new RecordingLog().append);
     expect(updater.checks).toBe(1);
 
     vi.advanceTimersByTime(CHECK_INTERVAL_MS - 1);
@@ -106,8 +120,8 @@ describe("startAutoUpdate", () => {
 
   it("stops checking once stopped", () => {
     const updater = new FakeUpdater();
-    stop = startAutoUpdate(updater, new RecordingLog().append);
-    stop();
+    control = startAutoUpdate(updater, new RecordingLog().append);
+    control.stop();
 
     vi.advanceTimersByTime(CHECK_INTERVAL_MS * 3);
     expect(updater.checks).toBe(1);
@@ -116,7 +130,7 @@ describe("startAutoUpdate", () => {
   it("logs the version when an update is found and when it has downloaded", () => {
     const updater = new FakeUpdater();
     const log = new RecordingLog();
-    stop = startAutoUpdate(updater, log.append);
+    control = startAutoUpdate(updater, log.append);
 
     updater.emit("update-available", { version: "1.0.1" });
     updater.emit("update-downloaded", { version: "1.0.1" });
@@ -135,7 +149,7 @@ describe("startAutoUpdate", () => {
     updater.failNextCheck(withCode("Cannot find channel latest-mac.yml", "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND"));
 
     try {
-      stop = startAutoUpdate(updater, log.append);
+      control = startAutoUpdate(updater, log.append);
       await vi.advanceTimersByTimeAsync(0);
     } finally {
       process.off("unhandledRejection", unhandled);
@@ -155,7 +169,7 @@ describe("startAutoUpdate", () => {
     updater.failNextDownload(withCode("download failed", "ERR_DL"));
 
     try {
-      stop = startAutoUpdate(updater, log.append);
+      control = startAutoUpdate(updater, log.append);
       await vi.advanceTimersByTimeAsync(0);
       // Node reports an unhandled rejection a turn after the promise rejects.
       await new Promise((resolve) => realSetImmediate(resolve));
@@ -172,7 +186,7 @@ describe("startAutoUpdate", () => {
     // rejects the download, which AppUpdater dispatches again as a second `error` event.
     const updater = new FakeUpdater();
     const log = new RecordingLog();
-    stop = startAutoUpdate(updater, log.append);
+    control = startAutoUpdate(updater, log.append);
     const squirrelError = withCode("Code signature did not pass validation", "ERR_SQUIRREL");
 
     updater.emit("error", squirrelError);
@@ -188,7 +202,7 @@ describe("startAutoUpdate", () => {
   it("logs the first line of the message when an error carries no code", () => {
     const updater = new FakeUpdater();
     const log = new RecordingLog();
-    stop = startAutoUpdate(updater, log.append);
+    control = startAutoUpdate(updater, log.append);
 
     updater.emit("error", new Error("net::ERR_INTERNET_DISCONNECTED\n    at SimpleURLLoaderWrapper"));
 
@@ -205,7 +219,8 @@ describe("startAutoUpdate", () => {
     };
     const log = new RecordingLog();
 
-    expect(() => (stop = startAutoUpdate(updater, log.append))).not.toThrow();
+    expect(() => (control = startAutoUpdate(updater, log.append))).not.toThrow();
+    expect(control?.status()).toEqual({ state: "failed", code: "EBOOM" });
     vi.advanceTimersByTime(CHECK_INTERVAL_MS);
 
     expect(updater.checks).toBe(2);
@@ -213,5 +228,151 @@ describe("startAutoUpdate", () => {
       expect.objectContaining({ event: "update", outcome: "failed EBOOM" }),
       expect.objectContaining({ event: "update", outcome: "failed EBOOM" }),
     ]);
+  });
+  it("reports each state a check moves through", () => {
+    const updater = new FakeUpdater();
+    control = startAutoUpdate(updater, new RecordingLog().append);
+    expect(control.status()).toEqual({ state: "idle" });
+
+    updater.emit("checking-for-update", undefined);
+    expect(control.status()).toEqual({ state: "checking" });
+    updater.emit("update-not-available", undefined);
+    expect(control.status()).toEqual({ state: "current" });
+
+    updater.emit("checking-for-update", undefined);
+    updater.emit("update-available", { version: "1.0.9" });
+    expect(control.status()).toEqual({ state: "downloading", version: "1.0.9", percent: null });
+    updater.emit("download-progress", { percent: 44.6 });
+    expect(control.status()).toEqual({ state: "downloading", version: "1.0.9", percent: 45 });
+    updater.emit("update-downloaded", { version: "1.0.9" });
+    expect(control.status()).toEqual({ state: "ready", version: "1.0.9" });
+  });
+
+  it("reports a failed check by its code", () => {
+    const updater = new FakeUpdater();
+    control = startAutoUpdate(updater, new RecordingLog().append);
+
+    updater.emit("checking-for-update", undefined);
+    updater.emit("error", withCode("offline", "ERR_OFFLINE"));
+
+    expect(control.status()).toEqual({ state: "failed", code: "ERR_OFFLINE" });
+  });
+
+  it("stops offering an install when a later download fails, since that clears the downloaded file", () => {
+    const updater = new FakeUpdater();
+    control = startAutoUpdate(updater, new RecordingLog().append);
+    updater.emit("update-downloaded", { version: "1.0.9" });
+
+    updater.emit("checking-for-update", undefined);
+    updater.emit("update-available", { version: "1.0.10" });
+    updater.emit("error", withCode("download failed", "ERR_DL"));
+
+    expect(control.status()).toEqual({ state: "failed", code: "ERR_DL" });
+    expect(control.install("1.0.9")).toBe(false);
+    expect(updater.quitAndInstallCalls).toEqual([]);
+  });
+
+  it("on macOS waits for Squirrel before offering the install", () => {
+    const updater = new FakeUpdater();
+    const native = new FakeNative();
+    control = startAutoUpdate(updater, new RecordingLog().append, native);
+
+    updater.emit("update-downloaded", { version: "1.0.9" });
+    expect(control.status()).toEqual({ state: "preparing", version: "1.0.9" });
+    expect(control.install("1.0.9")).toBe(false);
+    expect(updater.quitAndInstallCalls).toEqual([]);
+
+    native.emit();
+    expect(control.status()).toEqual({ state: "ready", version: "1.0.9" });
+  });
+
+  it("on macOS reports Squirrel's failure instead of a ready install", () => {
+    const updater = new FakeUpdater();
+    const native = new FakeNative();
+    control = startAutoUpdate(updater, new RecordingLog().append, native);
+
+    updater.emit("update-downloaded", { version: "1.0.9" });
+    updater.emit("error", withCode("Code signature did not pass validation", "ERR_SQUIRREL"));
+    native.emit();
+
+    expect(control.status()).toEqual({ state: "failed", code: "ERR_SQUIRREL" });
+  });
+
+  it("checks again when asked, and logs the request", () => {
+    const updater = new FakeUpdater();
+    const log = new RecordingLog();
+    control = startAutoUpdate(updater, log.append);
+    expect(updater.checks).toBe(1);
+
+    control.check();
+
+    expect(updater.checks).toBe(2);
+    expect(log.entries).toEqual([expect.objectContaining({ event: "update", origin: "app", outcome: "check" })]);
+  });
+
+  it("does nothing on install until an update has downloaded", () => {
+    const updater = new FakeUpdater();
+    const log = new RecordingLog();
+    control = startAutoUpdate(updater, log.append);
+
+    expect(control.install("1.0.9")).toBe(false);
+    updater.emit("update-available", { version: "1.0.9" });
+    expect(control.install("1.0.9")).toBe(false);
+
+    expect(updater.quitAndInstallCalls).toEqual([]);
+    expect(log.entries.map((e) => e.outcome)).toEqual(["available 1.0.9"]);
+  });
+
+  it("installs only the version that was confirmed", () => {
+    const updater = new FakeUpdater();
+    control = startAutoUpdate(updater, new RecordingLog().append);
+    updater.emit("update-downloaded", { version: "1.0.10" });
+
+    expect(control.install("1.0.9")).toBe(false);
+    expect(updater.quitAndInstallCalls).toEqual([]);
+  });
+
+  it("installs silently and relaunches once an update has downloaded, logs it, and installs once", () => {
+    const updater = new FakeUpdater();
+    const log = new RecordingLog();
+    control = startAutoUpdate(updater, log.append);
+    updater.emit("update-downloaded", { version: "1.0.9" });
+
+    expect(control.install("1.0.9")).toBe(true);
+    expect(control.status()).toEqual({ state: "installing", version: "1.0.9" });
+    expect(control.install("1.0.9")).toBe(false);
+
+    expect(updater.quitAndInstallCalls).toEqual([[true, true]]);
+    expect(log.entries.map((e) => e.outcome)).toEqual(["downloaded 1.0.9", "install 1.0.9"]);
+  });
+
+  it("reports an install that electron-updater refuses with an error event", () => {
+    const updater = new FakeUpdater();
+    updater.quitAndInstall = () => {
+      updater.emit("error", new Error("No update filepath provided, can't quit and install"));
+    };
+    const log = new RecordingLog();
+    control = startAutoUpdate(updater, log.append);
+    updater.emit("update-downloaded", { version: "1.0.9" });
+
+    expect(control.install("1.0.9")).toBe(false);
+    expect(control.status()).toEqual({ state: "failed", code: "No update filepath provided, can't quit and install" });
+    expect(log.entries.map((e) => e.outcome)).toEqual([
+      "downloaded 1.0.9", "install 1.0.9", "failed No update filepath provided, can't quit and install",
+    ]);
+  });
+
+  it("reports an install that throws", () => {
+    const updater = new FakeUpdater();
+    updater.quitAndInstall = () => {
+      throw withCode("installer missing", "ENOENT");
+    };
+    const log = new RecordingLog();
+    control = startAutoUpdate(updater, log.append);
+    updater.emit("update-downloaded", { version: "1.0.9" });
+
+    expect(control.install("1.0.9")).toBe(false);
+    expect(control.status()).toEqual({ state: "failed", code: "ENOENT" });
+    expect(log.entries.map((e) => e.outcome)).toEqual(["downloaded 1.0.9", "install 1.0.9", "failed ENOENT"]);
   });
 });

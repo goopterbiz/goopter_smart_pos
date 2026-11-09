@@ -1,8 +1,17 @@
 import os from "node:os";
 import path from "node:path";
-import { app, ipcMain, Menu, session, type IpcMainEvent, type IpcMainInvokeEvent, type WebFrameMain } from "electron";
+import {
+  app,
+  ipcMain,
+  Menu,
+  autoUpdater as nativeUpdater,
+  session,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+  type WebFrameMain,
+} from "electron";
 import { autoUpdater } from "electron-updater";
-import { startAutoUpdate } from "../bridge/autoUpdate.js";
+import { startAutoUpdate, type UpdateControl } from "../bridge/autoUpdate.js";
 import { SUPPORTED_PROTOCOL_VERSIONS } from "../bridge/constants.js";
 import { originOf } from "../bridge/hostPolicy.js";
 import { JobLog, LOG_FILE_NAME } from "../bridge/jobLog.js";
@@ -58,14 +67,16 @@ if (!app.requestSingleInstanceLock()) {
     });
 
     pos = new PosWindow(log);
-    registerIpc(pos, handler, log);
+    // An unpackaged build has no app-update.yml to say where releases live.
+    const update = app.isPackaged
+      ? startAutoUpdate(autoUpdater, (entry) => log.append(entry), process.platform === "darwin" ? nativeUpdater : null)
+      : null;
+    registerIpc(pos, handler, log, update);
     // Fire-and-forget: TN3179's documented trigger for the macOS 15+ Local Network prompt, run at
     // startup so it is answered before the first print instead of during it (§8.2, C3). Gated by
     // platform inside the call itself, and never throws or delays the line below it.
     void requestLocalNetworkPrompt(process.platform, os.release(), (entry) => log.append(entry));
     void session.defaultSession.clearCache().catch(() => undefined).then(() => pos?.openHome());
-    // An unpackaged build has no app-update.yml to say where releases live.
-    if (app.isPackaged) startAutoUpdate(autoUpdater, (entry) => log.append(entry));
   });
 }
 
@@ -81,7 +92,7 @@ function roleOf(frame: WebFrameMain | null | undefined) {
   return frameRole({ url: frame.url, isMainFrame: frame.parent === null, debugOrigin, shellUrlPrefix });
 }
 
-function registerIpc(pos: PosWindow, handler: PrintBridgeHandler, log: JobLog): void {
+function registerIpc(pos: PosWindow, handler: PrintBridgeHandler, log: JobLog, update: UpdateControl | null): void {
   // Asked once per document by the preload, before the page's own scripts run.
   ipcMain.on("goopter:frame-role", (event: IpcMainEvent) => {
     const role = roleOf(event.senderFrame);
@@ -149,4 +160,9 @@ function registerIpc(pos: PosWindow, handler: PrintBridgeHandler, log: JobLog): 
     if (typeof value !== "boolean") throw new Error("Window mode must be true or false.");
     return setWindowMode(value, "app");
   });
+  shellHandle("shell:update-status", () => ({ version: app.getVersion(), status: update?.status() ?? null }));
+  shellHandle("shell:update-check", () => update?.check());
+  shellHandle("shell:update-install", (_event, version) =>
+    typeof version === "string" ? (update?.install(version) ?? false) : false,
+  );
 }

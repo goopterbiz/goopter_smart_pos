@@ -93,8 +93,10 @@ choose. Packaging settings are in `electron-builder.cjs`.
 
 A packaged app checks the GitHub repo in `release.env` (`GH_REPO_URL`) at launch and every 6
 hours, downloads a newer release in the background, and installs it the next time the app quits.
-It never restarts itself. Each check, download and failure is written to the diagnostic log as an
-`update` entry. The repo is baked into each build, so an installed app keeps polling the repo it
+It never restarts on its own. The Updates section of the diagnostic log's ⋯ menu shows the installed
+version and the update status, and has Check for updates. Once an update has downloaded it also
+offers Restart and install, which asks first and then installs and relaunches. Each check,
+download, install and failure is written to the diagnostic log as an `update` entry. The repo is baked into each build, so an installed app keeps polling the repo it
 was built with.
 
 To move to a new release repo, set `GH_REPO_URL` to the new repo and `OLD_GH_REPO_URL` to the old
@@ -140,7 +142,7 @@ them.
 
 | Shortcut | Action |
 |---|---|
-| Ctrl+Shift+L (Cmd+Shift+L on macOS) | Diagnostic log. Its ⋯ menu has Home, Reload, Change store and Window mode |
+| Ctrl+Shift+L (Cmd+Shift+L on macOS) | Diagnostic log. Its ⋯ menu has Home, Reload, Change store, Window mode and Updates |
 | Ctrl+Shift+Q (Cmd+Shift+Q on macOS) | Quit, after a confirmation |
 
 The store is asked for once and remembered. Change store clears the saved store and the website

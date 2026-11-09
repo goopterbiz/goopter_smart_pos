@@ -54,5 +54,8 @@ if (role.role === "pos") {
     getKiosk: () => ipcRenderer.invoke("shell:get-kiosk"),
     // Passed through as given: the main process refuses anything but a boolean.
     setKiosk: (value: unknown) => ipcRenderer.invoke("shell:set-kiosk", value),
+    getUpdate: () => ipcRenderer.invoke("shell:update-status"),
+    checkUpdate: () => ipcRenderer.invoke("shell:update-check"),
+    installUpdate: (version: unknown) => ipcRenderer.invoke("shell:update-install", version),
   });
 }

@@ -135,12 +135,40 @@ test("the ⋯ menu opens from the button's left edge with Home, Reload, Change s
   );
   expect(menu.left).toBe(button.left);
   expect(menu.top).toBeGreaterThanOrEqual(button.bottom);
-  await expect(log.locator("#menu [role^=menuitem]")).toHaveText(["Home", "Reload", "Change store…", "Kiosk", "Window"]);
-  await expect(log.locator("#menu hr")).toHaveCount(1);
+  await expect(log.locator("#menu [role^=menuitem]:visible")).toHaveText([
+    "Home", "Reload", "Change store…", "Kiosk", "Window", "Check for updates",
+  ]);
+  await expect(log.locator("#menu hr")).toHaveCount(2);
   await expect(log.locator("#menu")).toContainText("Window mode");
   await expect(log.locator("#menu")).toContainText("Applies now and on every launch.");
   await expect(log.locator("#mode-kiosk")).toHaveAttribute("aria-checked", "false");
   await expect(log.locator("#mode-window")).toHaveAttribute("aria-checked", "true");
+});
+
+test("Updates shows the version, is off in a development build, and offers no install", async () => {
+  const version = await app.evaluate(({ app }) => app.getVersion());
+  await expect(log.locator("#update-status")).toHaveText(`Version ${version}. Updates are off in development builds.`);
+  await expect(log.locator("#update-check")).toBeDisabled();
+  await expect(log.locator("#update-install")).toBeHidden();
+  expect(await log.evaluate(() => (window as any).goopterShell.installUpdate("9.9.9"))).toBe(false);
+});
+
+test("a POS page cannot reach the update channels", async () => {
+  const outcomes = await app.evaluate(async ({ ipcMain }, url) => {
+    const results: string[] = [];
+    for (const channel of ["shell:update-status", "shell:update-check", "shell:update-install"]) {
+      const handler = (ipcMain as any)._invokeHandlers.get(channel);
+      if (typeof handler !== "function") throw new Error(`ipcMain._invokeHandlers has no ${channel} handler`);
+      try {
+        await handler({ senderFrame: { url, parent: null } });
+        results.push("resolved");
+      } catch (error) {
+        results.push((error as Error).message);
+      }
+    }
+    return results;
+  }, pos.url());
+  expect(outcomes).toEqual(["Not permitted.", "Not permitted.", "Not permitted."]);
 });
 
 test("Esc closes an open menu and leaves the log open", async () => {
