@@ -48,6 +48,9 @@ module.exports = {
     ],
     category: "Office",
     maintainer: "Goopter",
+    icon: "build/icons",
+    desktop: { entry: { StartupWMClass: "Goopter Smart POS" } },
+    extraResources: [{ from: "build/icons/256x256.png", to: "icon.png" }],
   },
 };
 
