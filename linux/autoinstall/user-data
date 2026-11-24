@@ -1,0 +1,47 @@
+#cloud-config
+autoinstall:
+  version: 1
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+  source:
+    id: ubuntu-server-minimal
+  storage:
+    layout:
+      name: direct
+  identity:
+    hostname: goopter-pos
+    username: goopter_admin
+    password: "!"
+  ssh:
+    install-server: false
+  packages:
+    - curl
+    - ca-certificates
+  late-commands:
+    - mkdir -p /target/etc/goopter-pos
+    - |
+      cat > /target/etc/goopter-pos/install.env <<'EOF'
+      TS_AUTHKEY=REPLACE_WITH_TAILSCALE_AUTH_KEY
+      EOF
+    - chmod 0600 /target/etc/goopter-pos/install.env
+    - |
+      cat > /target/etc/systemd/system/goopter-pos-firstboot.service <<'EOF'
+      [Unit]
+      Description=Goopter Smart POS first-boot provisioning
+      Wants=network-online.target
+      After=network-online.target
+      ConditionPathExists=!/var/lib/goopter-pos/provisioned
+
+      [Service]
+      Type=oneshot
+      EnvironmentFile=/etc/goopter-pos/install.env
+      ExecStart=/bin/sh -c 'curl -fsSL https://raw.githubusercontent.com/goopterbiz/goopter_smart_pos/main/linux/install.sh -o /usr/local/sbin/goopter-pos-install && bash /usr/local/sbin/goopter-pos-install'
+      ExecStartPost=/usr/bin/rm -f /etc/goopter-pos/install.env
+      ExecStartPost=/usr/bin/systemctl reboot
+      TimeoutStartSec=infinity
+
+      [Install]
+      WantedBy=multi-user.target
+      EOF
+    - curtin in-target -- systemctl enable goopter-pos-firstboot.service
