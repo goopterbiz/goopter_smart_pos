@@ -3,6 +3,12 @@
 Prepares an Ubuntu 26.04 LTS x86_64 computer as a Goopter Smart POS till with one command.
 
 ```sh
+curl -fsSL https://install.goopter.com/linux | sudo bash
+```
+
+If `install.goopter.com` is unreachable, use the GitHub address directly:
+
+```sh
 curl -fsSL https://raw.githubusercontent.com/goopterbiz/goopter_smart_pos/main/linux/install.sh | sudo bash
 ```
 
@@ -30,7 +36,7 @@ Smart POS.
 Pass options as environment variables after `sudo`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/goopterbiz/goopter_smart_pos/main/linux/install.sh | sudo GOOPTER_STORE=mystore bash
+curl -fsSL https://install.goopter.com/linux | sudo GOOPTER_STORE=mystore bash
 ```
 
 | Variable | Default | Effect |
