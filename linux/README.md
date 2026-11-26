@@ -49,8 +49,10 @@ curl -fsSL https://install.goopter.com/linux | sudo GOOPTER_STORE=mystore bash
 
 The script is safe to run again. It keeps the saved store, the keyring, the Tailscale login and the
 installed app unless an option above says otherwise. Every run sets a new RustDesk password and
-shows it once, so update the merchant record after any run. A run without a terminal, such as the
-USB first boot, leaves the RustDesk password unchanged.
+shows it once, so update the merchant record after any run. RustDesk only accepts a password while
+a graphical session is running, so on a first install the password is kept in a root-only file and
+`goopter-pos-rustdesk-password.service` applies it after the reboot, then deletes the file. A run
+without a terminal, such as the USB first boot, leaves the RustDesk password unchanged.
 
 ## One-time Tailscale setup
 
@@ -117,6 +119,7 @@ autoinstall requires a user.
 | Wrong app version | The app updates itself. To force the latest: `sudo APP_REINSTALL=true bash /usr/local/sbin/goopter-pos-install`, or the curl command with `sudo APP_REINSTALL=true bash` |
 | Till not in Tailscale | `tailscale status`. Rejoin with `sudo tailscale up --ssh --auth-key=<key>` |
 | RustDesk offline | `systemctl status rustdesk`, `rustdesk --get-id` |
+| RustDesk password rejected after install | `sudo grep goopter-pos-rustdesk /var/log/goopter-pos-install.log`, `systemctl status goopter-pos-rustdesk-password`. Rerun the installer for a new password |
 | Need to use the till directly | Support connects over Tailscale SSH. `sudo systemctl restart lightdm` restarts the kiosk session |
 
 ## Testing status
