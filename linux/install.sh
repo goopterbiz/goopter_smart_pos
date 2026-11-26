@@ -302,8 +302,25 @@ install_rustdesk() {
     install -m 0644 "$template" /usr/lib/systemd/system/rustdesk.service
     sed -i 's|pkill|/usr/bin/pkill|g' /usr/lib/systemd/system/rustdesk.service
   fi
+  local conf
+  for conf in /root/.config/rustdesk/RustDesk2.toml /home/*/.config/rustdesk/RustDesk2.toml; do
+    if [[ -f "$conf" ]] && grep -q '^stop-service *=' "$conf"; then
+      log "Clearing the RustDesk stop-service setting in $conf"
+      systemctl stop rustdesk.service 2>/dev/null || true
+      sed -i '/^stop-service *=/d' "$conf"
+    fi
+  done
   systemctl daemon-reload
   systemctl enable --now rustdesk.service
+  for _ in $(seq 1 15); do
+    systemctl is-active --quiet rustdesk.service && break
+    sleep 1
+  done
+  if ! systemctl is-active --quiet rustdesk.service; then
+    log "WARNING: rustdesk.service is not running"
+    systemctl status rustdesk.service --no-pager -l || true
+    journalctl -u rustdesk.service -n 20 --no-pager || true
+  fi
 
   if [[ -e "$STATE_DIR/rustdesk-password-set" && "$RUSTDESK_RESET_PASSWORD" != true ]]; then
     log "RustDesk password is already set. Set RUSTDESK_RESET_PASSWORD=true to replace it"
@@ -394,6 +411,7 @@ main() {
   exec > >(tee -a "$LOG_FILE") 2>&1
   trap 'on_error $LINENO' ERR
   trap cleanup EXIT
+  printf '\n===== %s =====\n' "$(date -Is)"
   log "Goopter Smart POS provisioning started"
   preflight
   install_packages
