@@ -45,11 +45,14 @@ curl -fsSL https://install.goopter.com/linux | sudo GOOPTER_STORE=mystore bash
 | `TS_AUTHKEY` | prompt | Tailscale auth key. Prompted with hidden input when empty |
 | `TS_HOSTNAME` | `pos-<store>-<id>` | Tailscale machine name |
 | `TAILSCALE_JOIN` | `true` | `false` installs Tailscale without joining |
-| `RUSTDESK_RESET_PASSWORD` | `false` | `true` sets and shows a new RustDesk password |
 | `APP_REINSTALL` | `false` | `true` replaces the installed app with the latest release |
 
-The script is safe to run again. It keeps the saved store, the keyring, the Tailscale login, the
-RustDesk password and the installed app unless an option above says otherwise.
+The script is safe to run again. It keeps the saved store, the keyring, the Tailscale login and the
+installed app unless an option above says otherwise. Every run sets a new RustDesk password and
+shows it once, so update the merchant record after any run. RustDesk only accepts a password while
+a graphical session is running, so on a first install the password is kept in a root-only file and
+`goopter-pos-rustdesk-password.service` applies it after the reboot, then deletes the file. A run
+without a terminal, such as the USB first boot, leaves the RustDesk password unchanged.
 
 ## One-time Tailscale setup
 
@@ -98,7 +101,7 @@ and runs `install.sh` and reboots into the kiosk.
 4. After the till restarts into the kiosk, set the RustDesk password over Tailscale SSH:
 
    ```sh
-   sudo RUSTDESK_RESET_PASSWORD=true bash /usr/local/sbin/goopter-pos-install
+   sudo bash /usr/local/sbin/goopter-pos-install
    ```
 
 `goopter_admin` is created with a locked password, so it cannot log in. It exists only because
@@ -116,6 +119,7 @@ autoinstall requires a user.
 | Wrong app version | The app updates itself. To force the latest: `sudo APP_REINSTALL=true bash /usr/local/sbin/goopter-pos-install`, or the curl command with `sudo APP_REINSTALL=true bash` |
 | Till not in Tailscale | `tailscale status`. Rejoin with `sudo tailscale up --ssh --auth-key=<key>` |
 | RustDesk offline | `systemctl status rustdesk`, `rustdesk --get-id` |
+| RustDesk password rejected after install | `sudo grep goopter-pos-rustdesk /var/log/goopter-pos-install.log`, `systemctl status goopter-pos-rustdesk-password`. Rerun the installer for a new password |
 | Need to use the till directly | Support connects over Tailscale SSH. `sudo systemctl restart lightdm` restarts the kiosk session |
 
 ## Testing status

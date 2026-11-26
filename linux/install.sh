@@ -15,10 +15,13 @@ GOOPTER_STORE=${GOOPTER_STORE:-}
 TS_AUTHKEY=${TS_AUTHKEY:-}
 TS_HOSTNAME=${TS_HOSTNAME:-}
 TAILSCALE_JOIN=${TAILSCALE_JOIN:-true}
-RUSTDESK_RESET_PASSWORD=${RUSTDESK_RESET_PASSWORD:-false}
 APP_REINSTALL=${APP_REINSTALL:-false}
 
 RUSTDESK_PASSWORD=""
+RUSTDESK_PASSWORD_PENDING=false
+RD_PENDING=$STATE_DIR/rustdesk-password.pending
+RD_HELPER=/usr/local/sbin/goopter-pos-rustdesk-password
+RD_UNIT=goopter-pos-rustdesk-password.service
 WORK_DIR=""
 
 log() { printf '%s [goopter-pos] %s\n' "$(date -Is)" "$*"; }
@@ -41,7 +44,7 @@ preflight() {
   . /etc/os-release
   [[ "$ID" == ubuntu ]] || fail "Ubuntu is required, found $ID"
   [[ "$(uname -m)" == x86_64 ]] || fail "x86_64 is required, found $(uname -m)"
-  for v in TAILSCALE_JOIN RUSTDESK_RESET_PASSWORD APP_REINSTALL; do
+  for v in TAILSCALE_JOIN APP_REINSTALL; do
     [[ "${!v}" == true || "${!v}" == false ]] || fail "$v must be true or false"
   done
   if [[ -n "$GOOPTER_STORE" && ! "$GOOPTER_STORE" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]; then
@@ -286,6 +289,45 @@ install_tailscale() {
   rm -f "$keyfile"
 }
 
+install_rustdesk_password_helper() {
+  cat >"$RD_HELPER" <<'EOF'
+#!/usr/bin/env bash
+PENDING=/var/lib/goopter-pos/rustdesk-password.pending
+LOG=/var/log/goopter-pos-install.log
+log() { printf '%s [goopter-pos-rustdesk] %s\n' "$(date -Is)" "$*" >>"$LOG"; }
+[[ -s "$PENDING" ]] || exit 0
+out=""
+for _ in $(seq 1 60); do
+  out=$(rustdesk --password "$(cat "$PENDING")" 2>&1)
+  if [[ "$out" == *"Done!"* ]]; then
+    rm -f "$PENDING"
+    touch /var/lib/goopter-pos/rustdesk-password-set
+    log "RustDesk password applied"
+    exit 0
+  fi
+  sleep 5
+done
+log "WARNING: RustDesk password not applied after 5 minutes: $out. It is retried at the next boot"
+exit 1
+EOF
+  chmod 0700 "$RD_HELPER"
+  cat >"/etc/systemd/system/$RD_UNIT" <<EOF
+[Unit]
+Description=Apply the pending Goopter POS RustDesk password
+After=rustdesk.service display-manager.service
+ConditionPathExists=$RD_PENDING
+
+[Service]
+Type=exec
+ExecStart=$RD_HELPER
+
+[Install]
+WantedBy=graphical.target
+EOF
+  systemctl daemon-reload
+  systemctl enable "$RD_UNIT" >/dev/null 2>&1
+}
+
 install_rustdesk() {
   local template=/usr/share/rustdesk/files/systemd/rustdesk.service
   if [[ "$(dpkg-query -W -f='${Status}' rustdesk 2>/dev/null)" != "install ok installed" || ! -f "$template" ]]; then
@@ -312,6 +354,7 @@ install_rustdesk() {
   done
   systemctl daemon-reload
   systemctl enable --now rustdesk.service
+  install_rustdesk_password_helper
   for _ in $(seq 1 15); do
     systemctl is-active --quiet rustdesk.service && break
     sleep 1
@@ -322,12 +365,8 @@ install_rustdesk() {
     journalctl -u rustdesk.service -n 20 --no-pager || true
   fi
 
-  if [[ -e "$STATE_DIR/rustdesk-password-set" && "$RUSTDESK_RESET_PASSWORD" != true ]]; then
-    log "RustDesk password is already set. Set RUSTDESK_RESET_PASSWORD=true to replace it"
-    return
-  fi
   if ! have_tty; then
-    log "WARNING: no terminal to show a new RustDesk password, it was not set. Rerun with RUSTDESK_RESET_PASSWORD=true over Tailscale SSH"
+    log "WARNING: no terminal to show a new RustDesk password, it was not set. Rerun the installer over Tailscale SSH"
     return
   fi
   for _ in $(seq 1 15); do
@@ -335,9 +374,18 @@ install_rustdesk() {
     sleep 2
   done
   RUSTDESK_PASSWORD=$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9' | head -c 16)
-  rustdesk --password "$RUSTDESK_PASSWORD" >/dev/null
-  touch "$STATE_DIR/rustdesk-password-set"
-  log "RustDesk password set. It is shown once at the end and is not logged"
+  local out
+  out=$(rustdesk --password "$RUSTDESK_PASSWORD" 2>&1 || true)
+  if [[ "$out" == *"Done!"* ]]; then
+    rm -f "$RD_PENDING"
+    touch "$STATE_DIR/rustdesk-password-set"
+    log "RustDesk password set. It is shown once at the end and is not logged"
+  else
+    (umask 077 && printf '%s' "$RUSTDESK_PASSWORD" >"$RD_PENDING")
+    rm -f "$STATE_DIR/rustdesk-password-set"
+    RUSTDESK_PASSWORD_PENDING=true
+    log "RustDesk cannot take a password before the kiosk session starts (${out:-no reply}). $RD_UNIT applies it after the reboot"
+  fi
 }
 
 validate() {
@@ -385,7 +433,8 @@ validate() {
   fi
   check "RustDesk service is running" systemctl is-active rustdesk.service
   warn_check "RustDesk has an ID" rd_id
-  warn_check "RustDesk password is set" test -e "$STATE_DIR/rustdesk-password-set"
+  rd_password() { [[ -e "$STATE_DIR/rustdesk-password-set" || -s "$RD_PENDING" ]]; }
+  warn_check "RustDesk password is set or applies after reboot" rd_password
   return $failed
 }
 
@@ -399,8 +448,12 @@ summary() {
   log "Tailscale: $ts_name ${ts_ip:-}"
   log "RustDesk ID: ${rd:-unknown}"
   if [[ -n "$RUSTDESK_PASSWORD" ]]; then
-    printf '\nRustDesk ID: %s\nRustDesk password: %s\nRecord both in the merchant record now. The password is not shown again.\n\n' \
+    printf '\nRustDesk ID: %s\nRustDesk password: %s\nRecord both in the merchant record now. The password is not shown again.\n' \
       "${rd:-unknown}" "$RUSTDESK_PASSWORD" >/dev/tty
+    if [[ "$RUSTDESK_PASSWORD_PENDING" == true ]]; then
+      printf 'The password takes effect after the reboot.\n' >/dev/tty
+    fi
+    printf '\n' >/dev/tty
   fi
   log "Reboot to start the kiosk: sudo reboot"
 }
