@@ -53,13 +53,29 @@ preflight() {
   WORK_DIR=$(mktemp -d)
 }
 
+configure_tailscale_repo() {
+  log "Configuring the Tailscale package repository"
+  local codename list=/etc/apt/sources.list.d/tailscale.list f
+  codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
+  curl -fsSL "https://pkgs.tailscale.com/stable/ubuntu/$codename.noarmor.gpg" -o "$WORK_DIR/tailscale.gpg"
+  install -m 0644 "$WORK_DIR/tailscale.gpg" /usr/share/keyrings/tailscale-archive-keyring.gpg
+  echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu $codename main" >"$list"
+  for f in /etc/apt/sources.list.d/*; do
+    if [[ "$f" != "$list" && -f "$f" ]] && grep -q 'pkgs\.tailscale\.com' "$f"; then
+      log "Removing duplicate Tailscale source $f"
+      rm -f "$f"
+    fi
+  done
+}
+
 install_packages() {
   log "Installing system packages"
   export DEBIAN_FRONTEND=noninteractive
   echo "lightdm shared/default-x-display-manager select lightdm" | debconf-set-selections
+  configure_tailscale_repo
   apt-get update -q
   apt-get install -y -q --no-install-recommends \
-    ca-certificates curl jq openssl apparmor \
+    ca-certificates curl jq openssl apparmor tailscale \
     xserver-xorg x11-xserver-utils lightdm lightdm-gtk-greeter openbox \
     dbus-user-session dbus-x11 gnome-keyring libsecret-1-0 \
     libfuse2t64 libnss3 libgtk-3-0t64 libasound2t64 libgbm1 libxss1 libxtst6 libnotify4 xdg-utils \
@@ -244,11 +260,6 @@ tailscale_state() {
 }
 
 install_tailscale() {
-  if ! command -v tailscale >/dev/null; then
-    log "Installing Tailscale"
-    curl -fsSL https://tailscale.com/install.sh -o "$WORK_DIR/tailscale-install.sh"
-    sh "$WORK_DIR/tailscale-install.sh"
-  fi
   systemctl enable --now tailscaled.service
 
   if [[ "$(tailscale_state)" == Running ]]; then
@@ -276,16 +287,40 @@ install_tailscale() {
 }
 
 install_rustdesk() {
-  if ! dpkg -s rustdesk >/dev/null 2>&1; then
+  local template=/usr/share/rustdesk/files/systemd/rustdesk.service
+  if [[ "$(dpkg-query -W -f='${Status}' rustdesk 2>/dev/null)" != "install ok installed" || ! -f "$template" ]]; then
     log "Installing RustDesk"
     local url
     url=$(curl -fsSL https://api.github.com/repos/rustdesk/rustdesk/releases/latest |
       jq -r '[.assets[] | select(.name | test("^rustdesk-[0-9.]+-x86_64\\.deb$"))][0].browser_download_url')
     [[ -n "$url" && "$url" != null ]] || fail "no RustDesk x86_64 .deb found in the latest release"
     curl -fsSL "$url" -o "$WORK_DIR/rustdesk.deb"
-    apt-get install -y -q "$WORK_DIR/rustdesk.deb"
+    apt-get install -y -q --reinstall "$WORK_DIR/rustdesk.deb"
   fi
+  if [[ ! -f /usr/lib/systemd/system/rustdesk.service && ! -f /etc/systemd/system/rustdesk.service ]]; then
+    log "Restoring the missing rustdesk.service unit"
+    install -m 0644 "$template" /usr/lib/systemd/system/rustdesk.service
+    sed -i 's|pkill|/usr/bin/pkill|g' /usr/lib/systemd/system/rustdesk.service
+  fi
+  local conf
+  for conf in /root/.config/rustdesk/RustDesk2.toml /home/*/.config/rustdesk/RustDesk2.toml; do
+    if [[ -f "$conf" ]] && grep -q '^stop-service *=' "$conf"; then
+      log "Clearing the RustDesk stop-service setting in $conf"
+      systemctl stop rustdesk.service 2>/dev/null || true
+      sed -i '/^stop-service *=/d' "$conf"
+    fi
+  done
+  systemctl daemon-reload
   systemctl enable --now rustdesk.service
+  for _ in $(seq 1 15); do
+    systemctl is-active --quiet rustdesk.service && break
+    sleep 1
+  done
+  if ! systemctl is-active --quiet rustdesk.service; then
+    log "WARNING: rustdesk.service is not running"
+    systemctl status rustdesk.service --no-pager -l || true
+    journalctl -u rustdesk.service -n 20 --no-pager || true
+  fi
 
   if [[ -e "$STATE_DIR/rustdesk-password-set" && "$RUSTDESK_RESET_PASSWORD" != true ]]; then
     log "RustDesk password is already set. Set RUSTDESK_RESET_PASSWORD=true to replace it"
@@ -376,6 +411,7 @@ main() {
   exec > >(tee -a "$LOG_FILE") 2>&1
   trap 'on_error $LINENO' ERR
   trap cleanup EXIT
+  printf '\n===== %s =====\n' "$(date -Is)"
   log "Goopter Smart POS provisioning started"
   preflight
   install_packages
