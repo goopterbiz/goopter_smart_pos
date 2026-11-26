@@ -109,7 +109,7 @@ autoinstall requires a user.
 `reset.sh` clears what the installer keeps between runs, so the next run starts clean:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/goopterbiz/goopter_smart_pos/main/linux/reset.sh | sudo bash
+curl -fsSL https://install.goopter.com/reset | sudo bash
 curl -fsSL https://install.goopter.com/linux | sudo bash
 sudo reboot
 ```
