@@ -15,7 +15,6 @@ GOOPTER_STORE=${GOOPTER_STORE:-}
 TS_AUTHKEY=${TS_AUTHKEY:-}
 TS_HOSTNAME=${TS_HOSTNAME:-}
 TAILSCALE_JOIN=${TAILSCALE_JOIN:-true}
-RUSTDESK_RESET_PASSWORD=${RUSTDESK_RESET_PASSWORD:-false}
 APP_REINSTALL=${APP_REINSTALL:-false}
 
 RUSTDESK_PASSWORD=""
@@ -41,7 +40,7 @@ preflight() {
   . /etc/os-release
   [[ "$ID" == ubuntu ]] || fail "Ubuntu is required, found $ID"
   [[ "$(uname -m)" == x86_64 ]] || fail "x86_64 is required, found $(uname -m)"
-  for v in TAILSCALE_JOIN RUSTDESK_RESET_PASSWORD APP_REINSTALL; do
+  for v in TAILSCALE_JOIN APP_REINSTALL; do
     [[ "${!v}" == true || "${!v}" == false ]] || fail "$v must be true or false"
   done
   if [[ -n "$GOOPTER_STORE" && ! "$GOOPTER_STORE" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]; then
@@ -322,12 +321,8 @@ install_rustdesk() {
     journalctl -u rustdesk.service -n 20 --no-pager || true
   fi
 
-  if [[ -e "$STATE_DIR/rustdesk-password-set" && "$RUSTDESK_RESET_PASSWORD" != true ]]; then
-    log "RustDesk password is already set. Set RUSTDESK_RESET_PASSWORD=true to replace it"
-    return
-  fi
   if ! have_tty; then
-    log "WARNING: no terminal to show a new RustDesk password, it was not set. Rerun with RUSTDESK_RESET_PASSWORD=true over Tailscale SSH"
+    log "WARNING: no terminal to show a new RustDesk password, it was not set. Rerun the installer over Tailscale SSH"
     return
   fi
   for _ in $(seq 1 15); do

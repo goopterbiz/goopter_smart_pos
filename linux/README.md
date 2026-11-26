@@ -45,11 +45,12 @@ curl -fsSL https://install.goopter.com/linux | sudo GOOPTER_STORE=mystore bash
 | `TS_AUTHKEY` | prompt | Tailscale auth key. Prompted with hidden input when empty |
 | `TS_HOSTNAME` | `pos-<store>-<id>` | Tailscale machine name |
 | `TAILSCALE_JOIN` | `true` | `false` installs Tailscale without joining |
-| `RUSTDESK_RESET_PASSWORD` | `false` | `true` sets and shows a new RustDesk password |
 | `APP_REINSTALL` | `false` | `true` replaces the installed app with the latest release |
 
-The script is safe to run again. It keeps the saved store, the keyring, the Tailscale login, the
-RustDesk password and the installed app unless an option above says otherwise.
+The script is safe to run again. It keeps the saved store, the keyring, the Tailscale login and the
+installed app unless an option above says otherwise. Every run sets a new RustDesk password and
+shows it once, so update the merchant record after any run. A run without a terminal, such as the
+USB first boot, leaves the RustDesk password unchanged.
 
 ## One-time Tailscale setup
 
@@ -98,7 +99,7 @@ and runs `install.sh` and reboots into the kiosk.
 4. After the till restarts into the kiosk, set the RustDesk password over Tailscale SSH:
 
    ```sh
-   sudo RUSTDESK_RESET_PASSWORD=true bash /usr/local/sbin/goopter-pos-install
+   sudo bash /usr/local/sbin/goopter-pos-install
    ```
 
 `goopter_admin` is created with a locked password, so it cannot log in. It exists only because
