@@ -104,6 +104,27 @@ and runs `install.sh` and reboots into the kiosk.
 `goopter_admin` is created with a locked password, so it cannot log in. It exists only because
 autoinstall requires a user.
 
+## Reset a till
+
+`reset.sh` clears what the installer keeps between runs, so the next run starts clean:
+
+```sh
+curl -fsSL https://install.goopter.com/reset | sudo bash
+curl -fsSL https://install.goopter.com/linux | sudo bash
+sudo reboot
+```
+
+It stops the kiosk session and every `goopter_pos` process, including Goopter Smart POS, then removes:
+
+- the app `/home/goopter_pos/Applications/GoopterSmartPOS.AppImage`
+- the app data `/home/goopter_pos/.config/Goopter Smart POS` (saved store, cookies, app log)
+- the keyring `/home/goopter_pos/.local/share/keyrings` (terminal sign-in key)
+- the installer state `/var/lib/goopter-pos`
+
+Tailscale, RustDesk, the `goopter_pos` user and the system settings stay, so it is safe to run over
+Tailscale SSH. The till must be enrolled again with a new terminal code. Until the installer runs
+and the till reboots, the screen shows the text console.
+
 ## Troubleshooting
 
 | Symptom | Check |
